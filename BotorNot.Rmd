@@ -38,34 +38,39 @@ data <- read.csv("botornot-1.csv")
 
 # Data Cleaning 
 
-Identify relevant variables on theoretical note 
+Identify relevant variables on theoretical note.
 
 ```{r}
 data_base <-data %>%  select(c(bot, overallTime, consentTime, readProfileTime, readEssayTime, speeder, superspeeder, quirk, age, birthday, birthmonth, gender, totlanguage, god, grownup_us, samestate, sametown, incomeclass, retake, session, disconnected, treatment, feedback, grownup_us, parentsdivorced, children, pets.0, military, gayfriends, incomebracket, income, session))
 ```
 
-Recode NA's in bot column as zeros 
+Recode variables.
 
 ```{r}
+# Recode bot variable into dummy
 data_base$bot[is.na(data_base$bot)] <- 0
 data_base$bot[data_base$bot == 2] <- 1
 data_base$bot[data_base$bot == 3] <- 1
 
+# Change variable to factor 
 data_base$bot <- as.factor(data_base$bot)
 
+# Rename labels as Yes and No (for Bot-Yes and Bot-No)
 data_base$bot <- factor(data_base$bot, levels=c(0,1), labels=c("No", "Yes"))
+
+# Change classes of other variables
 data_base$speeder <- as.factor(data_base$speeder)
 data_base$superspeeder <- as.factor(data_base$superspeeder)
 data_base$retake <- as.factor(data_base$retake)
 ```
 
-Remove NA Rows
+Remove NA Rows.
 
 ```{r}
 data_clean <- data_base %>% na.omit()
 ```
 
-Count words in quirk variable
+Count words in quirk and feedback variable
 
 ```{r}
 data_clean <- data_clean %>% mutate(quirk_count = sapply(gregexpr("\\S+", data_clean$quirk), length), feedback_count = sapply(gregexpr("\\S+", data_clean$feedback), length))
@@ -85,9 +90,10 @@ data_clean %>% group_by(bot) %>%
                    age = median(age))
 ```
 
-# Plotting differences
+# Plotting differences between variables 
 
 ```{r eval=FALSE, include=FALSE}
+
 ggplot(data_clean, aes(x = bot, y = consentTime)) + geom_boxplot(outlier.shape = NA) + scale_y_continuous(limits = quantile(data$consentTime, c(0.1, 0.9)))
 
 plotdata <- data_clean %>% select(c(bot, consentTime, readProfileTime, readEssayTime, quirk_count, feedback_count, age))
@@ -117,13 +123,15 @@ colnames(modeldata) <- make.names(colnames(modeldata))
 Split data into train & test set. Here, a 70/30 split is used to provide the test set with some more cases of the minority class (80/20-split would have resulted in only 14 cases which the model can be tested on)
 
 ```{r}
+# Set seed for reproducability
 set.seed(92381)
 
+# Create data partition which controls how much of the whole data should be split into train and testset
 cdp <- createDataPartition(modeldata$bot, 
                                p = .7, 
                                list = FALSE, 
                                times = 1)
-
+# Split into train & testset
 model_train <- modeldata[cdp,]
 model_test <- modeldata[-cdp,]
 ```
@@ -161,7 +169,6 @@ confusionMatrix(p_knn, model_test$bot, mode = "everything", positive = "Yes")
 
 prob_knn <- predict(knn, model_test, type = "prob")
 ```
-
 
 # XGBoost 
 
