@@ -13,15 +13,13 @@ library(dplyr)
 ```{r}
 setwd("/Users/2egaa/Desktop/nG-BotClassifier")
 data <- read.csv("botornot-1.csv")
-data <- data %>% drop_na(c(overallTime, consentTime, readProfileTime, readEssayTime, speeder))
 ```
 
 Select relevant variables and merge text variables. 
 
 ```{r}
-data_glove <- data %>% select(c(bot, feedback, quirk))
+data_glove <- data %>% select(c(bot, feedback, readEssayTime, readProfileTime, superspeeder))
 data_glove$feedback <- as.character(data_glove$feedback)
-data_glove$text <- do.call(paste0, data_glove[2:3])
 ```
 
 Clean-up bot variable.
@@ -33,22 +31,6 @@ data_glove$bot[data_glove$bot == 3] <- 1
 data_glove$bot <- as.integer(data_glove$bot)
 ```
 
-Create train & test dataset. 
-
-```{r}
-data_train <- data_glove[1:1200,]
-data_test <- data_glove[1201:1351,]
-```
-
-Run only if pre_trained vectors are not downloaded yet. 
-
-```{r eval=FALSE, include=FALSE}
-if (!file.exists('glove.6B.zip')) {
-  download.file('http://nlp.stanford.edu/data/glove.6B.zip',destfile = 'glove.6B.zip')
-  unzip('glove.6B.zip')
-}
-```
-
 Read in vectors. 
 
 ```{r}
@@ -56,6 +38,16 @@ vectors <- data.table::fread('glove.6B.300d.txt', data.table = F,  encoding = 'U
 colnames(vectors) = c('word',paste('dim',1:300,sep = '_'))
 
 as_tibble(vectors)
+```
+
+
+Create train & test dataset. 
+
+```{r}
+set.seed(72721)
+
+data_train <- data_glove[1:1150,]
+data_test <- data_glove[1151:1351,]
 ```
 
 Set parameters.
@@ -66,92 +58,89 @@ maxlen = 60
 dim_size = 300
 ```
 
-```{r}
-word_seqs <- text_tokenizer(num_words = max_words) %>% 
-  fit_text_tokenizer(data_train$text)
-```
+Tokenizing.
 
 ```{r}
-x_train <- texts_to_sequences(word_seqs, data_train$text) %>%
-  pad_sequences(maxlen = maxlen)
+word_seqs <- text_tokenizer(num_words = max_words) %>% 
+  fit_text_tokenizer(data_train$feedback)
 ```
+
+Define training data - independent variable. 
+
+```{r}
+x_train <- texts_to_sequences(word_seqs, data_train$feedback) %>%
+  pad_sequences( maxlen = maxlen) 
+```
+
+Define training data - dependent variable. 
 
 ```{r}
 y_train <- as.matrix(data_train$bot)
+```
+
+Unlist word indices. 
+
+```{r}
 word_indices <- unlist(word_seqs$word_index)
 ```
+
+Put them in dataframe.
 
 ```{r}
 dic <- data.frame(word = names(word_indices), key = word_indices, stringsAsFactors = FALSE) %>%
   arrange(key) %>% .[1:max_words,]
 ```
 
+Join the words from our corpus with the pretrained vectors.
 ```{r}
 word_embeds <- dic  %>% left_join(vectors) %>% .[,3:302] %>% replace(., is.na(.), 0) %>% as.matrix()
 ```
 
-Create object with meta features and transform it into matrix. 
+Define and train model. 
 
 ```{r}
-data_meta <- data %>% select(overallTime, consentTime, readProfileTime, readEssayTime, speeder)
+input <- layer_input(shape = list(maxlen), name = "input")
 
-data_meta <- as.matrix(data_meta)
-```
+model <- input %>%
+  layer_embedding(input_dim = max_words, output_dim = dim_size, input_length = maxlen,
+                  weights = list(word_embeds), trainable = FALSE) %>%
+  layer_spatial_dropout_1d(rate = 0.2 ) %>%
+  bidirectional(
+    layer_gru(units = 80, return_sequences = TRUE)
+  )
 
-```{r}
-# Define layer for GloVe
-main_input <- layer_input(shape = list(maxlen), name = "input")
+max_pool <- model %>% layer_global_max_pooling_1d()
+ave_pool <- model %>% layer_global_average_pooling_1d()
 
-lstm_out <- main_input %>%
-         layer_embedding(input_dim = max_words, 
-                         output_dim = dim_size, 
-                         input_length = maxlen, 
-                         weights = list(word_embeds), trainable = FALSE) %>%
-         layer_spatial_dropout_1d(rate = 0.2 ) %>%
-         bidirectional(layer_gru(units = 80, return_sequences = TRUE))
+output = layer_concatenate(list(ave_pool, max_pool)) %>%
+  layer_dense(units = 1, activation = "sigmoid")
 
+model <- keras_model(input, output)
 
-auxiliary_output <- lstm_out %>%
-                    layer_dense(units = 5, 
-                                activation = 'sigmoid', 
-                                name = 'aux_output')
-
-# Create second layer for the meta data 
-auxiliary_input <- layer_input(shape = list(maxlen), 
-                               name = "aux_input")
-  
-# "Stack" both layers on top of each other
-main_output <- layer_concatenate(c(lstm_out, auxiliary_input)) %>%
-         layer_dense(units = 64, activation = 'relu') %>%
-         layer_dense(units = 64, activation = 'relu') %>%
-         layer_dense(units = 64, activation = 'relu') %>%
-         layer_dense(units = 5, activation = 'sigmoid', name = 'main_output')
-
-# Define model with two in- and outputs
-model <- keras_model(inputs = c(x_train, test), 
-                     outputs = c(output, auxiliary_output ))
-
-# Compile model
 model %>% compile(
   optimizer = "adam",
   loss = "binary_crossentropy",
-  metrics = tensorflow::tf$keras$metrics$AUC()
+  metrics = c(tensorflow::tf$keras$metrics$AUC(), 'accuracy')
 )
 
-# Train model with the two different layers
 history <- model %>% keras::fit(
-  x = list(main_input = x_train, aux_input = data_meta),
-  y = list(main_output = y_train, aux_output = y_train))
+  x = x_train, y = y_train,
   epochs = 16,
   batch_size = 32,
-  validation_split = 0.2
+  validation_split = 0.1
 )
 ```
 
-```{r}
-x_test <- texts_to_sequences(word_seqs, data_test$text) %>%
-  pad_sequences( maxlen = maxlen)
+Define test data - indepedent variable. 
 
+```{r}
+x_test <- texts_to_sequences(word_seqs, data_test$feedback) %>%
+  pad_sequences( maxlen = maxlen)
+```
+
+define test data - dependent variable.
+
+```{r}
 y_test <- as.matrix(data_test$bot)
 ```
 
@@ -162,11 +151,13 @@ pred <- model %>% predict(x_test)
 format(round(pred, 2), scientific = FALSE)
 ```
 
-Evaluate performance of the model. 
+Evaluate performance. 
 
 ```{r}
-model %>% evaluate(x_test, y_test, verbose = 0)
+eval <- model %>% evaluate(x_test, y_test, verbose = 0)
 ```
+
+Look at actual classes vs. predicted classes.
 
 ```{r}
 newdf <- data.frame(probabilites = format(round(pred, 2)), bot = data_test$bot)
