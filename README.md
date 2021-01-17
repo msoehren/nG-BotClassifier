@@ -6,7 +6,7 @@ The goal of this project is to build a bot classifier that outputs probabilistic
 
 # File Descriptions 
 
-**All Models** - Comparison: This file displays all of the models trained in this project on the first dataset and outputs a comparison of Accuracy and AUC at the end. 
+**All Models - Comparison**: This file displays all of the models trained in this project on the first dataset and outputs a comparison of Accuracy and AUC at the end. 
 
 **Best Model**: This file displays the currently best performing model (GloVe)
 
