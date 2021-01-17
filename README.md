@@ -11,3 +11,5 @@ The goal of this project is to build a bot classifier that outputs probabilistic
 **Best Model**: This file displays the currently best performing model (GloVe)
 
 **Multiclass Classification**: This file displays a short demonstration of trying to build multiclass classification models with the second dataset. 
+
+**Multi-Input Model_Attempt**: This file displays an attempt at adding additional layers to the GloVe model.
