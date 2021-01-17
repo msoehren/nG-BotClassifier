@@ -1,0 +1,160 @@
+---
+title: "Multiclass Classification"
+author: "Malte Söhren"
+date: "12/16/2020"
+output: html_document
+---
+
+# Loading Packages 
+
+```{r}
+library(tidyverse)
+library(DataExplorer)
+library(caret)
+library(caretEnsemble)
+library(pROC)
+library(gbm)
+library(data.table)
+library(superml)
+```
+
+```{r}
+setwd("/Users/2egaa/Desktop/ng-BotClassifier/")
+data_base <- read.csv("overview_labels.csv")
+```
+
+Select relevant variables. 
+
+```{r}
+data <- data_base %>%  select(c("bot", "rejected", "freetext",  "ratioIneqUS",   "avgTime.min",    "outRatio",  "speeder", "time_1.1.1", "time_1.2.1", "time_2.1.1", "time_2.2.1", "time_2.3.1", "time_feedback", "time_feedback", "feedback"))
+```
+
+Recode target variable into three distinct classes. 
+
+```{r}
+data_tr <- setDT(data)[bot == "Human" & rejected == 1, Bot := "Slow"]
+data_tr <- setDT(data)[bot == "Human" & rejected == 0, Bot := "Human"]
+data_tr <- setDT(data)[bot == "Bot" & rejected == 1, Bot := "Bot"]
+
+data_tr <- data_tr %>% select(-c("bot", "rejected"))
+
+# 0 = no bot; 1 = slow; 2 = Bot 
+```
+
+Change classes of variables. 
+
+```{r}
+data_tr$freetext <- as.character(data_tr$freetext)
+data_tr$feedback <- as.character(data_tr$feedback)
+data_tr$Bot <- as.factor(data_tr$Bot)
+```
+Filling missing values with mean of variable.
+```{r}
+data_tr <- data_tr %>% 
+  group_by(Bot) %>% 
+  mutate(avgTime.min = ifelse(is.na(avgTime.min), mean(avgTime.min, na.rm = TRUE), 
+                              avgTime.min))
+```
+
+Drop NA's.
+```{r}
+data_final <- data_tr %>% drop_na()
+```
+
+Create Bag-of-Words dummies. 
+
+```{r}
+cv <- CountVectorizer$new(max_features = 300, remove_stopwords = FALSE, lowercase = TRUE)
+
+bow <- cv$fit_transform(data_final$feedback)
+
+bow <- as.data.frame(bow)
+
+modeldata <- bind_cols(data_final, bow)
+modeldata <- modeldata %>% select(-c(feedback...292, feedback...12, freetext))
+
+
+colnames(modeldata) <- make.names(colnames(modeldata))
+```
+
+# Train Models 
+
+Split data into train & test set. 
+```{r}
+set.seed(64738)
+
+cdp <- createDataPartition(modeldata$Bot, 
+                               p = .7, 
+                               list = FALSE, 
+                               times = 1)
+
+model_train <- modeldata[cdp,]
+model_test <- modeldata[-cdp,]
+```
+
+Define control object. 
+
+```{r}
+ctrl  <- trainControl(method = "cv", 
+                      number = 5,
+                      summaryFunction = multiClassSummary,
+                      verboseIter = TRUE,
+                      classProbs = TRUE,
+                      sampling = "smote",
+                      savePredictions = "final")
+```
+
+# XGBoost 
+
+Define grid. 
+
+```{r}
+grid_xg <- expand.grid(max_depth = c(2, 3),
+                    nrounds = c(50, 100),
+                    eta = c(0.4),
+                    min_child_weight = c(1,2),
+                    gamma = c(0, 0.5),
+                    colsample_bytree = c(0.4, 1.0),
+                    subsample = c(0, 1))
+```
+
+Train model. 
+
+```{r}
+set.seed(79647)
+xgb <- train(Bot ~ .,
+             data = model_train,
+             method = "xgbTree",
+             trControl = ctrl,
+             tuneGrid = grid_xg,
+             metric = "ROC")
+```
+
+Evaluate performance. 
+
+```{r}
+p_xgb <- predict(xgb, newdata = model_test, type = "raw")
+cm_xgb <- confusionMatrix(p_xgb, model_test$Bot, mode = "everything", positive = "Yes")
+```
+
+# C5.0 
+
+Train model. 
+
+```{r}
+set.seed(87543)
+
+c5 <- train(Bot ~ .,
+            data = model_train,
+            method = "C5.0",
+            trControl = ctrl)
+```
+Evaluate performance. 
+
+```{r}
+p_c5 <- predict(c5, model_test, type = "raw")
+cm_c5 <- confusionMatrix(p_c5, model_test$Bot, mode = "everything", positive = "Yes")
+```
+
+
+
