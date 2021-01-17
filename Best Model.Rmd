@@ -162,7 +162,7 @@ pred <- model %>% predict(x_test)
 format(round(pred, 2), scientific = FALSE)
 ```
 
-Evaluate performance. 
+Evaluate performance of the model. 
 
 ```{r}
 model %>% evaluate(x_test, y_test, verbose = 0)
