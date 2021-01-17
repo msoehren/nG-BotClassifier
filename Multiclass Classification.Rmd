@@ -79,7 +79,7 @@ colnames(modeldata) <- make.names(colnames(modeldata))
 
 # Train Models 
 
-Split data into train & test set. 
+Split data into train and test set. 
 ```{r}
 set.seed(64738)
 
