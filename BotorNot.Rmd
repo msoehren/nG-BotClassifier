@@ -1,5 +1,5 @@
 ---
-title: "Botornot"
+title: "All Models - Comparison"
 author: "Malte Söhren"
 date: "10/16/2020"
 output: html_document
@@ -93,14 +93,11 @@ data_clean %>% group_by(bot) %>%
 # Plotting differences between variables 
 
 ```{r eval=FALSE, include=FALSE}
-
-ggplot(data_clean, aes(x = bot, y = consentTime)) + geom_boxplot(outlier.shape = NA) + scale_y_continuous(limits = quantile(data$consentTime, c(0.1, 0.9)))
-
 plotdata <- data_clean %>% select(c(bot, consentTime, readProfileTime, readEssayTime, quirk_count, feedback_count, age))
 
 df.m <- melt(plotdata, id.var = "bot", factorsAsStrings=F)
 
-ggplot(data = df.m, aes(x=variable, y=value)) + geom_boxplot(aes(fill=bot)) + scale_y_continuous(limits = quantile(plotdata$consentTime, c(0.1, 0.9)))
+plot_diff <- ggplot(data = df.m, aes(x = variable, y = value)) + geom_boxplot(aes(fill=bot)) + scale_y_continuous(limits = quantile(plotdata$consentTime, c(0.1, 0.9)))
 ```
 
 # Bag of Words
@@ -165,7 +162,7 @@ knn <- train(bot ~ .,
 
 ```{r}
 p_knn <- predict(knn, model_test, type = "raw")
-confusionMatrix(p_knn, model_test$bot, mode = "everything", positive = "Yes")
+cm_knn <- confusionMatrix(p_knn, model_test$bot, mode = "everything", positive = "Yes")
 
 prob_knn <- predict(knn, model_test, type = "prob")
 ```
@@ -194,7 +191,7 @@ xgb <- train(bot ~ .,
 
 ```{r}
 p_xgb <- predict(xgb, newdata = model_test, type = "raw")
-confusionMatrix(p_xgb, model_test$bot, mode = "everything", positive = "Yes")
+cm_xgb <- confusionMatrix(p_xgb, model_test$bot, mode = "everything", positive = "Yes")
 
 prob_xgb <- predict(xgb, newdata = model_test, type = "prob")
 round(prob_xgb, 2)
@@ -213,7 +210,7 @@ c5 <- train(bot ~ .,
 
 ```{r}
 p_c5 <- predict(c5, model_test, type = "raw")
-confusionMatrix(p_c5, model_test$bot, mode = "everything", positive = "Yes")
+cm_c5 <- confusionMatrix(p_c5, model_test$bot, mode = "everything", positive = "Yes")
 
 prob_c5 <- predict(c5, model_test, type = "prob")
 bind_cols(round(prob_c5, 2), model_test$bot)
@@ -239,7 +236,7 @@ et <- train(bot ~ .,
 
 ```{r}
 p_et <- predict(et, model_test, type = "raw")
-confusionMatrix(p_et, model_test$bot, mode = "everything", positive = "Yes")
+cm_et <- confusionMatrix(p_et, model_test$bot, mode = "everything", positive = "Yes")
 
 prob_et <- predict(et, model_test, type = "prob")
 ```
@@ -300,8 +297,6 @@ vectors <- data.table::fread('glove.6B.300d.txt', data.table = F,  encoding = 'U
 colnames(vectors) = c('word',paste('dim',1:300,sep = '_'))
 
 as_tibble(vectors)
-
-system("say Vektoren sind geladen")
 ```
 
 
@@ -310,8 +305,8 @@ Create train & test dataset.
 ```{r}
 set.seed(72721)
 
-data_train <- data_glove[1:1200,]
-data_test <- data_glove[1201:1351,]
+data_train <- data_glove[1:1150,]
+data_test <- data_glove[1151:1351,]
 ```
 
 Set parameters.
@@ -375,10 +370,8 @@ history <- model %>% keras::fit(
   x = x_train, y = y_train,
   epochs = 16,
   batch_size = 32,
-  validation_split = 0
+  validation_split = 0.1
 )
-
-system("say Deep Learning Model ist fertig")
 ```
 
 
@@ -419,11 +412,11 @@ Final comparison of AUC: Choosing the "winner"
 
 ```{r}
 fin_comp <- data.frame(Model = c("XGB", "ExtraTrees", "KNN", "C5.0", "GloVe"), 
-                       AUC = c(auc_xgb, et_auc, knn_auc, c5_auc, glove_auc[2]))
+                       AUC = c(auc_xgb, et_auc, knn_auc, c5_auc, glove_auc[2]), 
+                       Accuracy = c(cm_xgb$overall[1], cm_et$overall[1], cm_knn$overall[1], cm_c5$overall[1], eval[3]))
 
-fin_comp %>% arrange(desc(AUC)) 
+fin_comp %>% arrange(desc(AUC))
 ```
-
 
 
 
