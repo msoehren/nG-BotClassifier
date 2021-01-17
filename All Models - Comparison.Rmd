@@ -76,7 +76,7 @@ Count words in quirk and feedback variable
 data_clean <- data_clean %>% mutate(quirk_count = sapply(gregexpr("\\S+", data_clean$quirk), length), feedback_count = sapply(gregexpr("\\S+", data_clean$feedback), length))
 ```
 
-# Short summary
+# Short summary.
 
 ```{r}
 data_clean %>% group_by(bot) %>% 
